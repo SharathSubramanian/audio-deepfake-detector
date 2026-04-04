@@ -1,4 +1,15 @@
-data/
+# Data folder (ignore large audio files)
+data/*
+!data/.gitkeep
 *.flac
+
+# Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+# Anaconda project files
+anaconda-project.yml
+anaconda-project-lock.yml
+
+# (Optional) Ignore text logs/output files — be careful with this
+*.txt
 
