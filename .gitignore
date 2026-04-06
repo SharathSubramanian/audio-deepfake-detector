@@ -6,6 +6,10 @@ data/*
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
+# Ignore Anaconda project files
+anaconda_projects/
+*.db
+
 # Anaconda project files
 anaconda-project.yml
 anaconda-project-lock.yml
