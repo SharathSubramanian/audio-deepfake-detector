@@ -13,3 +13,6 @@ anaconda-project-lock.yml
 # (Optional) Ignore text logs/output files — be careful with this
 *.txt
 
+models/
+*.pth
+
