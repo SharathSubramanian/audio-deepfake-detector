@@ -17,6 +17,34 @@ anaconda-project-lock.yml
 # (Optional) Ignore text logs/output files — be careful with this
 *.txt
 
+
+
 models/
 *.pth
 
+
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+env/
+
+# Mac
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Streamlit cache
+.streamlit/
+
+# Temporary files
+*.tmp
