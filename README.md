@@ -18,7 +18,6 @@
 - [Dataset](#dataset)
 - [Tech Stack](#tech-stack)
 - [Use Cases](#use-cases)
-- [Roadmap](#roadmap)
 - [Author](#author)
 
 ---
@@ -132,6 +131,8 @@ audio-deepfake-detector/
 |
 +-- notebooks/
 |   +-- setup.ipynb              # Data loading, preprocessing, EDA
+|   +-- test.ipynb              # Model testing
+|   +-- train.ipynb              # Model training
 |
 +-- src/                         # Core ML pipeline
 |   +-- models.py                # CNN, CNN+Dropout, CNN+Attention definitions
