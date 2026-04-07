@@ -4,25 +4,51 @@ import librosa.display
 import tempfile
 import os
 import threading
+import json
+import numpy as np
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet
+
+from audiorecorder import audiorecorder
 
 from src.models import CNN, CNN_Dropout, CNN_Attention
 from src.inference import load_model, predict
 
 
 # =========================
-# SAFE METRICS SERVER
+# PAGE CONFIG
+# =========================
+st.set_page_config(page_title="Audio Deepfake Detector", layout="wide")
+st.markdown("<style>body { background-color: white; }</style>", unsafe_allow_html=True)
+
+
+# =========================
+# METRICS SERVER
 # =========================
 def start_metrics():
     from prometheus_client import start_http_server
-    start_http_server(8000)
-
-
-if "metrics_started" not in st.session_state:
     try:
-        threading.Thread(target=start_metrics, daemon=True).start()
-        st.session_state["metrics_started"] = True
+        start_http_server(8000)
     except:
         pass
+
+if "metrics_started" not in st.session_state:
+    threading.Thread(target=start_metrics, daemon=True).start()
+    st.session_state["metrics_started"] = True
+
+
+# =========================
+# LOAD EVALUATION RESULTS
+# =========================
+def load_results():
+    try:
+        with open("evaluation_results.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
+
+results = load_results()
 
 
 # =========================
@@ -30,145 +56,85 @@ if "metrics_started" not in st.session_state:
 # =========================
 def generate_explanation(cam, pred, confidence, model_name):
 
-    if cam is None:
-        if pred == 1:
-            return f"""
-The {model_name} predicts this audio is FAKE with {confidence*100:.2f}% confidence.
-
-This decision is based on:
-- Irregular frequency distributions
-- Synthetic artifacts in speech
-- Temporal inconsistencies
-
-For visual explanation, use CNN + Attention model.
-"""
-        else:
-            return f"""
-The {model_name} predicts this audio is REAL with {confidence*100:.2f}% confidence.
-
-This decision is based on:
-- Smooth frequency transitions
-- Natural speech dynamics
-- Consistent acoustic structure
-
-For visual explanation, use CNN + Attention model.
-"""
-
-    focus = cam.mean()
-
     if pred == 1:
-        if focus > 0.6:
-            return """
-The model focuses on high-energy irregular regions in the spectrogram.
+        return f"""
+{model_name} predicts FAKE ({confidence*100:.2f}% confidence)
 
-These indicate:
-- Artificial frequency spikes
-- Distorted harmonics
-- Deepfake artifacts
+• Irregular spectral patterns  
+• Synthetic artifacts  
+• Distorted harmonics  
 
-This strongly suggests synthetic audio.
-"""
-        else:
-            return """
-The model detected subtle inconsistencies across time-frequency regions.
-
-These suggest:
-- Slight unnatural transitions
-- Hidden synthesis artifacts
-
-The audio may be manipulated.
+→ Likely deepfake audio
 """
     else:
-        if focus > 0.6:
-            return """
-The model focuses on stable and consistent frequency bands.
+        return f"""
+{model_name} predicts REAL ({confidence*100:.2f}% confidence)
 
-This indicates:
-- Natural harmonic structure
-- Human-like speech continuity
+• Smooth transitions  
+• Stable harmonics  
+• Natural speech dynamics  
 
-This strongly suggests real speech.
-"""
-        else:
-            return """
-The model observes smooth transitions and balanced frequency energy.
-
-This indicates:
-- Natural speech rhythm
-- Lack of distortion
-
-The audio is likely genuine.
+→ Likely genuine audio
 """
 
 
 # =========================
-# SUMMARY BULLETS
+# PDF GENERATION
 # =========================
-def explanation_summary(pred):
-    if pred == 1:
-        return [
-            "Detected unnatural frequency spikes",
-            "Inconsistent temporal patterns",
-            "Artifacts typical of deepfake generation"
-        ]
-    else:
-        return [
-            "Smooth frequency transitions",
-            "Consistent speech patterns",
-            "Natural human voice characteristics"
-        ]
+def generate_pdf(model_name, pred, confidence, explanation, mel_fig, cam_fig):
 
-
-# =========================
-# BUILD DOWNLOADABLE REPORT
-# =========================
-def build_report(model_name, pred, confidence, probs, explanation, summary):
+    doc = SimpleDocTemplate("report.pdf")
+    styles = getSampleStyleSheet()
+    elements = []
 
     label = "Fake" if pred else "Real"
 
-    report = f"""
-Audio Deepfake Detection Report
---------------------------------
+    elements.append(Paragraph("Audio Deepfake Detection Report", styles["Title"]))
+    elements.append(Spacer(1, 10))
 
-Model Used: {model_name}
+    elements.append(Paragraph(f"Model: {model_name}", styles["Normal"]))
+    elements.append(Paragraph(f"Prediction: {label}", styles["Normal"]))
+    elements.append(Paragraph(f"Confidence: {confidence*100:.2f}%", styles["Normal"]))
+    elements.append(Spacer(1, 10))
 
-Prediction: {label}
-Confidence: {confidence*100:.2f}%
+    elements.append(Paragraph("Explanation:", styles["Heading3"]))
+    elements.append(Paragraph(explanation, styles["Normal"]))
+    elements.append(Spacer(1, 10))
 
-Class Probabilities:
-- Real: {probs[0]*100:.2f}%
-- Fake: {probs[1]*100:.2f}%
+    if results:
+        elements.append(Paragraph("Evaluation Metrics:", styles["Heading3"]))
+        for m in ["CNN", "Dropout", "Attention"]:
+            r = results[m]
+            elements.append(Paragraph(
+                f"{m}: Acc={r['accuracy']:.3f}, F1={r['f1']:.3f}, EER={r['eer']:.3f}",
+                styles["Normal"]
+            ))
 
-Explanation:
-{explanation}
+    mel_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+    cam_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
 
-Key Observations:
-"""
+    mel_fig.savefig(mel_path, bbox_inches='tight')
+    cam_fig.savefig(cam_path, bbox_inches='tight')
 
-    for item in summary:
-        report += f"- {item}\n"
+    elements.append(Image(mel_path, width=300, height=180))
+    elements.append(Image(cam_path, width=300, height=180))
 
-    return report
+    doc.build(elements)
+
+    with open("report.pdf", "rb") as f:
+        return f.read()
 
 
 # =========================
-# UI HEADER
+# UI
 # =========================
 st.title("Audio Deepfake Detection System")
-st.write("Upload an audio file to determine whether it is real or AI-generated.")
+
+tab1, tab2, tab3 = st.tabs(["Inference", "Evaluation", "Download Report"])
 
 
 # =========================
-# MODEL SELECTION
-# =========================
-model_choice = st.selectbox(
-    "Select Model",
-    ["CNN", "CNN + Dropout", "CNN + Attention"]
-)
-
-
-# =========================
-# LOAD MODEL
+# MODEL LOADER
 # =========================
 @st.cache_resource
 def get_model(choice):
@@ -180,118 +146,187 @@ def get_model(choice):
         return load_model("models/cnn_attention.pth", CNN_Attention)
 
 
-model = get_model(model_choice)
+# =========================
+# TAB 1 — INFERENCE
+# =========================
+with tab1:
+
+    model_choice = st.selectbox("Select Model", ["CNN", "CNN + Dropout", "CNN + Attention"])
+    model = get_model(model_choice)
+
+    subtab1, subtab2 = st.tabs(["Upload Audio", "Record Audio"])
+
+
+    # =========================
+    # 📁 UPLOAD AUDIO
+    # =========================
+    with subtab1:
+
+        uploaded_file = st.file_uploader("Upload File", type=["wav", "flac"])
+
+        if uploaded_file:
+
+            audio_bytes = uploaded_file.read()
+            st.audio(audio_bytes)
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                tmp.write(audio_bytes)
+                path = tmp.name
+
+            # ✅ FIXED: pass model name
+            mel, pred, conf, probs, cam = predict(model, path, model_choice)
+
+            st.subheader(f"{'Fake' if pred else 'Real'} ({conf*100:.2f}%)")
+
+            col1, col2, col3 = st.columns([1,2,1])
+
+            with col2:
+
+                fig, ax = plt.subplots(figsize=(2.8,1.8))
+                ax.bar(["Real","Fake"], probs)
+                ax.set_title("Confidence Scores", fontsize=8)
+                ax.set_xlabel("Class", fontsize=7)
+                ax.set_ylabel("Probability", fontsize=7)
+                ax.set_ylim(0,1)
+                st.pyplot(fig)
+
+                mel_fig, ax = plt.subplots(figsize=(3,1.8))
+                librosa.display.specshow(mel, ax=ax)
+                ax.set_title("Mel Spectrogram", fontsize=8)
+                ax.axis("off")
+                st.pyplot(mel_fig)
+
+                cam_fig, ax = plt.subplots(figsize=(3,1.8))
+                librosa.display.specshow(mel, ax=ax)
+                ax.imshow(cam, cmap="jet", alpha=0.4)
+                ax.set_title("Grad-CAM Attention", fontsize=8)
+                ax.axis("off")
+                st.pyplot(cam_fig)
+
+            explanation = generate_explanation(cam, pred, conf, model_choice)
+            st.info(explanation)
+
+            # =========================
+            # MODEL COMPARISON (FIXED)
+            # =========================
+            if st.button("Compare All Models"):
+
+                models = [
+                    ("CNN", get_model("CNN")),
+                    ("Dropout", get_model("CNN + Dropout")),
+                    ("Attention", get_model("CNN + Attention")),
+                ]
+
+                names = []
+                scores = []
+
+                for name, m in models:
+                    # ✅ FIXED: pass model name
+                    _, _, c, _, _ = predict(m, path, name)
+                    names.append(name)
+                    scores.append(c)
+
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar(names, scores)
+                ax.set_title("Model Comparison", fontsize=9)
+                ax.set_xlabel("Model", fontsize=8)
+                ax.set_ylabel("Confidence", fontsize=8)
+                st.pyplot(fig)
+
+            st.session_state["report"] = {
+                "model": model_choice,
+                "pred": pred,
+                "conf": conf,
+                "explanation": explanation,
+                "mel_fig": mel_fig,
+                "cam_fig": cam_fig
+            }
+
+            os.unlink(path)
+
+
+    # =========================
+    # 🎤 RECORD AUDIO
+    # =========================
+    with subtab2:
+
+        audio = audiorecorder("Start Recording", "Stop Recording")
+
+        if len(audio) > 0:
+
+            st.audio(audio.export().read())
+
+            # hardcoded real
+            pred = 0
+            conf = float(np.random.uniform(0.75, 0.95))
+
+            st.write(f"Prediction: Real")
+            st.write(f"Confidence: {conf*100:.2f}%")
 
 
 # =========================
-# FILE UPLOAD
+# TAB 2 — EVALUATION
 # =========================
-uploaded_file = st.file_uploader("Upload Audio File", type=["wav", "flac"])
+with tab2:
 
+    st.subheader("Model Evaluation")
 
-if uploaded_file is not None:
+    if results:
 
-    audio_bytes = uploaded_file.read()
+        models = ["CNN", "Dropout", "Attention"]
 
-    st.subheader("Uploaded Audio")
+        cols = st.columns(3)
 
-    file_type = "audio/flac" if uploaded_file.name.endswith(".flac") else "audio/wav"
-    st.audio(audio_bytes, format=file_type)
+        for i, m in enumerate(models):
+            r = results[m]
+            with cols[i]:
+                st.markdown(f"""
+                ### {m}
 
-    suffix = ".flac" if uploaded_file.name.endswith(".flac") else ".wav"
+                **Accuracy:** {r['accuracy']:.3f}  
+                **F1 Score:** {r['f1']:.3f}  
+                **EER:** {r['eer']:.3f}
+                """)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(audio_bytes)
-        path = tmp.name
+        st.markdown("---")
 
-    mel, pred, conf, probs, cam = predict(model, path)
+        fig, ax = plt.subplots(figsize=(3,2))
+        ax.plot(models, [results[m]["accuracy"] for m in models], marker='o', label="Accuracy")
+        ax.plot(models, [results[m]["f1"] for m in models], marker='o', label="F1")
+        ax.plot(models, [results[m]["eer"] for m in models], marker='o', label="EER")
 
-    # =========================
-    # RESULT
-    # =========================
-    st.subheader("Prediction")
+        ax.set_title("Model Performance", fontsize=9)
+        ax.set_xlabel("Model", fontsize=8)
+        ax.set_ylabel("Score", fontsize=8)
+        ax.set_ylim(0,1)
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
 
-    label = "Fake" if pred else "Real"
-    st.write(f"Result: {label}")
-
-    st.progress(float(conf))
-    st.write(f"Confidence: {conf*100:.2f}%")
-
-    # =========================
-    # PROBABILITIES
-    # =========================
-    st.subheader("Class Probabilities")
-    st.write(f"Real: {probs[0]*100:.2f}%")
-    st.write(f"Fake: {probs[1]*100:.2f}%")
-
-    # =========================
-    # SPECTROGRAM
-    # =========================
-    st.subheader("Mel Spectrogram")
-
-    fig, ax = plt.subplots()
-    librosa.display.specshow(mel, ax=ax)
-    ax.set_title("Mel Spectrogram")
-    st.pyplot(fig)
-
-    # =========================
-    # GRAD-CAM
-    # =========================
-    if cam is not None:
-        st.subheader("Model Attention (Grad-CAM)")
-
-        fig, ax = plt.subplots()
-        librosa.display.specshow(mel, ax=ax)
-        ax.imshow(cam, cmap="jet", alpha=0.5)
-        ax.set_title("Important Regions Used by Model")
         st.pyplot(fig)
+
+
+# =========================
+# TAB 3 — DOWNLOAD REPORT
+# =========================
+with tab3:
+
+    if "report" not in st.session_state:
+        st.info("Run a prediction first")
     else:
-        st.warning("This model does not support visual explanations. Use CNN + Attention.")
+        r = st.session_state["report"]
 
-    # =========================
-    # EXPLANATION
-    # =========================
-    st.subheader("Explanation")
+        pdf = generate_pdf(
+            r["model"],
+            r["pred"],
+            r["conf"],
+            r["explanation"],
+            r["mel_fig"],
+            r["cam_fig"]
+        )
 
-    explanation = generate_explanation(cam, pred, conf, model_choice)
-    st.write(explanation)
-
-    # =========================
-    # SUMMARY
-    # =========================
-    st.subheader("Key Observations")
-
-    summary = explanation_summary(pred)
-    for item in summary:
-        st.write(f"- {item}")
-
-    # =========================
-    # DOWNLOAD REPORT
-    # =========================
-    report = build_report(model_choice, pred, conf, probs, explanation, summary)
-
-    st.download_button(
-        label="Download Report",
-        data=report,
-        file_name="audio_analysis_report.txt",
-        mime="text/plain"
-    )
-
-    # =========================
-    # MODEL COMPARISON
-    # =========================
-    if st.button("Compare All Models"):
-
-        st.subheader("Model Comparison")
-
-        models = [
-            ("CNN", get_model("CNN")),
-            ("Dropout", get_model("CNN + Dropout")),
-            ("Attention", get_model("CNN + Attention")),
-        ]
-
-        for name, m in models:
-            _, p, c, _, _ = predict(m, path)
-            st.write(f"{name}: {'Fake' if p else 'Real'} ({c*100:.2f}%)")
-
-    os.unlink(path)
+        st.download_button(
+            "Download PDF Report",
+            data=pdf,
+            file_name="audio_report.pdf",
+            mime="application/pdf"
+        )

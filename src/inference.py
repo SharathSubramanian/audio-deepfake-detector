@@ -2,17 +2,14 @@ import torch
 import numpy as np
 import librosa
 import torch.nn.functional as F
+import cv2
 
 SR = 16000
 N_MELS = 128
-FIXED_LENGTH = 128  # IMPORTANT: must match training
+FIXED_LENGTH = 128
 
-
-# =========================
-# AUDIO → MEL SPECTROGRAM
-# =========================
-import cv2
-
+import time
+from src.metrics import PREDICTIONS, LATENCY, CONFIDENCE, ERRORS
 def audio_to_mel(path):
     y, _ = librosa.load(path, sr=SR)
 
@@ -25,28 +22,27 @@ def audio_to_mel(path):
     mel = librosa.feature.melspectrogram(y=y, sr=SR, n_mels=128)
     mel = librosa.power_to_db(mel, ref=np.max)
 
-    # ✅ ADD THESE (CRITICAL FIX)
     mel = (mel - mel.mean()) / (mel.std() + 1e-6)
     mel = cv2.resize(mel, (128, 128))
 
-    return mel 
+    return mel
 
 
-# =========================
-# LOAD MODEL
-# =========================
 def load_model(path, model_class):
     model = model_class()
     model.load_state_dict(torch.load(path, map_location="cpu"))
     model.eval()
     return model
 
+def generate_gradcam(model):
 
-# =========================
-# GRAD-CAM (ONLY FOR ATTENTION MODEL)
-# =========================
-def generate_gradcam(model, class_idx):
-    gradients = model.gradients
+    if hasattr(model, "gradients") and model.gradients is not None:
+        gradients = model.gradients
+    elif model.feature_maps is not None and model.feature_maps.grad is not None:
+        gradients = model.feature_maps.grad
+    else:
+        return np.zeros((128, 128))  # SAFE fallback
+
     feature_maps = model.feature_maps
 
     weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
@@ -56,33 +52,44 @@ def generate_gradcam(model, class_idx):
     cam = cam.squeeze().detach().numpy()
 
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
+
     return cam
 
 
-# =========================
-# PREDICT
-# =========================
-def predict(model, audio_path):
-    mel = audio_to_mel(audio_path)
+import time
+from src.metrics import PREDICTIONS, LATENCY, CONFIDENCE, ERRORS
 
-    tensor = torch.tensor(mel).unsqueeze(0).unsqueeze(0).float()
+def predict(model, audio_path, model_name="CNN"):
 
-    explain = hasattr(model, "attention")
+    start = time.time()
 
-    if explain:
+    try:
+        mel = audio_to_mel(audio_path)
+
+        tensor = torch.tensor(mel).unsqueeze(0).unsqueeze(0).float()
+
         output = model(tensor, explain=True)
-    else:
-        output = model(tensor)
 
-    probs = torch.softmax(output, dim=1).detach().numpy()[0]
+        probs = torch.softmax(output, dim=1).detach().numpy()[0]
 
-    pred = int(np.argmax(probs))
-    conf = float(probs[pred])
+        pred = int(np.argmax(probs))
+        conf = float(probs[pred])
 
-    cam = None
-    if explain:
+        # Grad-CAM
         model.zero_grad()
         output[0, pred].backward()
-        cam = generate_gradcam(model, pred)
+        cam = generate_gradcam(model)
 
-    return mel, pred, conf, probs, cam
+        # ✅ METRICS UPDATE
+        label = "fake" if pred == 1 else "real"
+        PREDICTIONS.labels(model=model_name, prediction=label).inc()
+        CONFIDENCE.observe(conf)
+
+        return mel, pred, conf, probs, cam
+
+    except Exception as e:
+        ERRORS.inc()
+        raise e
+
+    finally:
+        LATENCY.observe(time.time() - start)

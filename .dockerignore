@@ -1,4 +1,10 @@
-venv
-__pycache__
-*.pyc
+venv/
+data/
+notebooks/
 logs/
+results/
+__pycache__/
+*.pyc
+*.ipynb
+*.pth
+*.pdf

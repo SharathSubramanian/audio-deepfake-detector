@@ -1,9 +1,10 @@
 streamlit
 torch
-torchaudio
 librosa
 matplotlib
 numpy
-pandas
-scikit-learn
+opencv-python
+reportlab
 prometheus-client
+streamlit-audiorecorder
+scikit-learn
