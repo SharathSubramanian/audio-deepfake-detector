@@ -131,14 +131,15 @@ audio-deepfake-detector/
 |
 +-- notebooks/
 |   +-- setup.ipynb              # Data loading, preprocessing, EDA
-|   +-- test.ipynb              # Model testing
+|   +-- test.ipynb               # Model testing
 |   +-- train.ipynb              # Model training
+|   +-- evaluation.ipynb         # Model evaluation
 |
+models                           # CNN, CNN+Dropout, CNN+Attention definitions
 +-- src/                         # Core ML pipeline
-|   +-- models.py                # CNN, CNN+Dropout, CNN+Attention definitions
 |   +-- inference.py             # Prediction and Grad-CAM generation
 |   +-- metrics.py               # Accuracy, F1, EER computation
-|   +-- preprocessing.py        # Audio to Mel spectrogram pipeline
+|   +-- preprocessing.py         # Audio to Mel spectrogram pipeline
 |
 +-- ui/                          # Streamlit frontend
 |   +-- app.py
