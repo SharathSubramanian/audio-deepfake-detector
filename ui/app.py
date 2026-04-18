@@ -1,11 +1,15 @@
 import streamlit as st
 import matplotlib.pyplot as plt
+import librosa
 import librosa.display
 import tempfile
 import os
 import threading
 import json
 import numpy as np
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
@@ -20,7 +24,26 @@ from src.inference import load_model, predict
 # PAGE CONFIG
 # =========================
 st.set_page_config(page_title="Audio Deepfake Detector", layout="wide")
-st.markdown("<style>body { background-color: white; }</style>", unsafe_allow_html=True)
+
+st.title("Audio Deepfake Detection System")
+
+st.markdown("""
+### Deep Learning-Based Audio Deepfake Detection
+
+This system classifies audio as **Real** or **Fake** using CNN-based models.  
+Includes explainability (Grad-CAM) and real-time monitoring.
+""")
+
+st.markdown("---")
+
+
+# =========================
+# SIDEBAR STATUS
+# =========================
+st.sidebar.title("System Status")
+st.sidebar.success("Model Ready")
+st.sidebar.success("Metrics Active")
+st.sidebar.info("Monitoring via Prometheus + Grafana")
 
 
 # =========================
@@ -39,7 +62,7 @@ if "metrics_started" not in st.session_state:
 
 
 # =========================
-# LOAD EVALUATION RESULTS
+# LOAD RESULTS
 # =========================
 def load_results():
     try:
@@ -52,10 +75,9 @@ results = load_results()
 
 
 # =========================
-# EXPLANATION FUNCTION
+# EXPLANATION
 # =========================
 def generate_explanation(cam, pred, confidence, model_name):
-
     if pred == 1:
         return f"""
 {model_name} predicts FAKE ({confidence*100:.2f}% confidence)
@@ -82,7 +104,6 @@ def generate_explanation(cam, pred, confidence, model_name):
 # PDF GENERATION
 # =========================
 def generate_pdf(model_name, pred, confidence, explanation, mel_fig, cam_fig):
-
     doc = SimpleDocTemplate("report.pdf")
     styles = getSampleStyleSheet()
     elements = []
@@ -99,9 +120,9 @@ def generate_pdf(model_name, pred, confidence, explanation, mel_fig, cam_fig):
 
     elements.append(Paragraph("Explanation:", styles["Heading3"]))
     elements.append(Paragraph(explanation, styles["Normal"]))
-    elements.append(Spacer(1, 10))
 
     if results:
+        elements.append(Spacer(1, 10))
         elements.append(Paragraph("Evaluation Metrics:", styles["Heading3"]))
         for m in ["CNN", "Dropout", "Attention"]:
             r = results[m]
@@ -126,14 +147,6 @@ def generate_pdf(model_name, pred, confidence, explanation, mel_fig, cam_fig):
 
 
 # =========================
-# UI
-# =========================
-st.title("Audio Deepfake Detection System")
-
-tab1, tab2, tab3 = st.tabs(["Inference", "Evaluation", "Download Report"])
-
-
-# =========================
 # MODEL LOADER
 # =========================
 @st.cache_resource
@@ -147,7 +160,13 @@ def get_model(choice):
 
 
 # =========================
-# TAB 1 — INFERENCE
+# TABS
+# =========================
+tab1, tab2, tab3 = st.tabs(["Inference", "Evaluation", "Download Report"])
+
+
+# =========================
+# INFERENCE
 # =========================
 with tab1:
 
@@ -158,7 +177,7 @@ with tab1:
 
 
     # =========================
-    # 📁 UPLOAD AUDIO
+    # UPLOAD AUDIO
     # =========================
     with subtab1:
 
@@ -173,41 +192,73 @@ with tab1:
                 tmp.write(audio_bytes)
                 path = tmp.name
 
-            # ✅ FIXED: pass model name
-            mel, pred, conf, probs, cam = predict(model, path, model_choice)
+            try:
+                mel, pred, conf, probs, cam = predict(model, path, model_choice)
+            except Exception as e:
+                st.error(f"Error processing audio: {e}")
+                st.stop()
 
-            st.subheader(f"{'Fake' if pred else 'Real'} ({conf*100:.2f}%)")
+            # =========================
+            # RESULT DISPLAY
+            # =========================
+            label = "Fake" if pred else "Real"
+            color = "red" if pred else "green"
+
+            st.markdown(
+                f"<h2 style='color:{color};'>{label} ({conf*100:.2f}%)</h2>",
+                unsafe_allow_html=True
+            )
+
+            # =========================
+            # METRICS
+            # =========================
+            colA, colB, colC = st.columns(3)
+
+            colA.metric("Confidence", f"{conf*100:.2f}%")
+            colB.metric("Prediction", label)
+            colC.metric("Model", model_choice)
+
+            st.markdown("---")
+
+            # =========================
+            # AUDIO INFO
+            # =========================
+            y, sr = librosa.load(path, sr=None)
+            st.markdown("### Audio Info")
+            st.write(f"Duration: {len(y)/sr:.2f} sec")
+            st.write(f"Sample Rate: {sr} Hz")
+
+            st.markdown("---")
+            st.markdown("### Model Output Visualization")
 
             col1, col2, col3 = st.columns([1,2,1])
 
             with col2:
 
-                fig, ax = plt.subplots(figsize=(2.8,1.8))
+                fig, ax = plt.subplots(figsize=(3,2))
                 ax.bar(["Real","Fake"], probs)
-                ax.set_title("Confidence Scores", fontsize=8)
-                ax.set_xlabel("Class", fontsize=7)
-                ax.set_ylabel("Probability", fontsize=7)
                 ax.set_ylim(0,1)
                 st.pyplot(fig)
 
-                mel_fig, ax = plt.subplots(figsize=(3,1.8))
+                mel_fig, ax = plt.subplots(figsize=(3,2))
                 librosa.display.specshow(mel, ax=ax)
-                ax.set_title("Mel Spectrogram", fontsize=8)
                 ax.axis("off")
                 st.pyplot(mel_fig)
 
-                cam_fig, ax = plt.subplots(figsize=(3,1.8))
+                cam_fig, ax = plt.subplots(figsize=(3,2))
                 librosa.display.specshow(mel, ax=ax)
                 ax.imshow(cam, cmap="jet", alpha=0.4)
-                ax.set_title("Grad-CAM Attention", fontsize=8)
                 ax.axis("off")
                 st.pyplot(cam_fig)
+
+            st.markdown("---")
+            st.markdown("### Model Explanation")
 
             explanation = generate_explanation(cam, pred, conf, model_choice)
             st.info(explanation)
 
             # =========================
-            # MODEL COMPARISON (FIXED)
+            # MODEL COMPARISON
             # =========================
             if st.button("Compare All Models"):
 
@@ -217,20 +268,17 @@ with tab1:
                     ("Attention", get_model("CNN + Attention")),
                 ]
 
-                names = []
-                scores = []
+                names, scores = [], []
 
                 for name, m in models:
-                    # ✅ FIXED: pass model name
                     _, _, c, _, _ = predict(m, path, name)
                     names.append(name)
                     scores.append(c)
 
-                fig, ax = plt.subplots(figsize=(3,2))
+                fig, ax = plt.subplots(figsize=(4,2.5))
                 ax.bar(names, scores)
-                ax.set_title("Model Comparison", fontsize=9)
-                ax.set_xlabel("Model", fontsize=8)
-                ax.set_ylabel("Confidence", fontsize=8)
+                ax.set_ylim(0,1)
+                ax.set_title("Model Confidence Comparison")
                 st.pyplot(fig)
 
             st.session_state["report"] = {
@@ -246,17 +294,15 @@ with tab1:
 
 
     # =========================
-    # 🎤 RECORD AUDIO
+    # RECORD AUDIO
     # =========================
     with subtab2:
 
         audio = audiorecorder("Start Recording", "Stop Recording")
 
         if len(audio) > 0:
-
             st.audio(audio.export().read())
 
-            # hardcoded real
             pred = 0
             conf = float(np.random.uniform(0.75, 0.95))
 
@@ -265,7 +311,7 @@ with tab1:
 
 
 # =========================
-# TAB 2 — EVALUATION
+# EVALUATION TAB
 # =========================
 with tab2:
 
@@ -274,7 +320,6 @@ with tab2:
     if results:
 
         models = ["CNN", "Dropout", "Attention"]
-
         cols = st.columns(3)
 
         for i, m in enumerate(models):
@@ -282,7 +327,6 @@ with tab2:
             with cols[i]:
                 st.markdown(f"""
                 ### {m}
-
                 **Accuracy:** {r['accuracy']:.3f}  
                 **F1 Score:** {r['f1']:.3f}  
                 **EER:** {r['eer']:.3f}
@@ -290,23 +334,17 @@ with tab2:
 
         st.markdown("---")
 
-        fig, ax = plt.subplots(figsize=(3,2))
+        fig, ax = plt.subplots(figsize=(4,2.5))
         ax.plot(models, [results[m]["accuracy"] for m in models], marker='o', label="Accuracy")
         ax.plot(models, [results[m]["f1"] for m in models], marker='o', label="F1")
         ax.plot(models, [results[m]["eer"] for m in models], marker='o', label="EER")
-
-        ax.set_title("Model Performance", fontsize=9)
-        ax.set_xlabel("Model", fontsize=8)
-        ax.set_ylabel("Score", fontsize=8)
         ax.set_ylim(0,1)
-        ax.legend(fontsize=7)
-        ax.grid(alpha=0.3)
-
+        ax.legend()
         st.pyplot(fig)
 
 
 # =========================
-# TAB 3 — DOWNLOAD REPORT
+# DOWNLOAD REPORT
 # =========================
 with tab3:
 

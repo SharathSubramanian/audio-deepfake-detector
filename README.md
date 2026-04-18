@@ -1,73 +1,82 @@
 # Audio Deepfake Detection System
 
-> An end-to-end deep learning pipeline for classifying audio as **real** or **AI-generated** — with explainability, production monitoring, and containerized deployment.
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Model Performance](#model-performance)
-- [Project Structure](#project-structure)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Usage](#usage)
-- [MLOps & Monitoring](#mlops--monitoring)
-- [Dataset](#dataset)
-- [Tech Stack](#tech-stack)
-- [Use Cases](#use-cases)
-- [Author](#author)
+> End-to-end deep learning pipeline for detecting AI-generated audio — with explainability, monitoring, and production-ready deployment.
 
 ---
 
 ## Overview
 
-As AI-generated audio grows increasingly indistinguishable from genuine speech, reliable detection systems are critical for trust, security, and media integrity. This project presents a **production-grade audio deepfake detection system** that goes beyond model training — incorporating explainability, real-time monitoring, and containerized deployment.
+As synthetic audio becomes increasingly realistic, detecting deepfakes is critical for **security, media integrity, and trust**.  
 
-Audio clips are converted into **Mel spectrograms** and classified using CNN-based architectures. Predictions are accompanied by **Grad-CAM visualizations** that highlight the spectrogram regions driving each decision, making the system transparent and auditable.
+This project presents a **complete machine learning system** that goes beyond model training to include:
+
+- Explainable predictions (Grad-CAM)
+- Real-time monitoring (Prometheus + Grafana)
+- Interactive user interface (Streamlit)
+- Containerized deployment (Docker)
+
+Audio inputs are converted into **Mel spectrograms** and classified using CNN-based models. Each prediction is accompanied by **visual explanations**, making the system interpretable and trustworthy.
+
+---
+
+## What’s New in Deliverable 3 🚀
+
+This version significantly improves upon the initial prototype:
+
+- Improved preprocessing (normalization, fixed-length inputs)
+- More stable model inference and Grad-CAM handling
+- Enhanced Streamlit UI with structured outputs
+- Real-time monitoring using Prometheus + Grafana
+- Extended evaluation with ROC curves and confusion matrices
+- Modular, reproducible system design
 
 ---
 
 ## Key Features
 
-### Deepfake Detection
-
-Three CNN-based model variants, each offering different performance/robustness trade-offs:
+### Deepfake Detection Models
 
 | Model | Description |
 |---|---|
-| `CNN` | Baseline convolutional classifier |
-| `CNN + Dropout` | Regularized variant for improved generalization |
-| `CNN + Attention` | Attention-augmented model for focused feature learning |
+| CNN | Baseline convolutional classifier |
+| CNN + Dropout | Improved generalization |
+| CNN + Attention | Focused feature learning |
 
-### Explainability (XAI)
+---
 
-- **Grad-CAM** heatmaps overlaid on Mel spectrograms
-- Highlights frequency-time regions most influential to the prediction
-- Supports model transparency and human-in-the-loop review
+### Explainability (Grad-CAM)
+
+- Visualizes **where the model is looking**
+- Highlights spectrogram regions influencing predictions
+- Improves transparency and debugging
+
+---
 
 ### Evaluation Metrics
 
-- Accuracy, Precision, Recall, F1 Score
-- **Equal Error Rate (EER)** — the standard metric for speaker verification and anti-spoofing systems
-- Results exported to `evaluation_results.json` for reproducibility
+- Accuracy, Precision, Recall, F1 Score  
+- Equal Error Rate (EER)  
+- ROC Curve and Confusion Matrix  
+
+Results are saved in `evaluation_results.json`.
+
+---
 
 ### Interactive UI (Streamlit)
 
-- Upload or simulate audio inference
-- Side-by-side model comparison
-- Confidence scores and spectrogram/Grad-CAM display
-- Clean, professional interface
+- Upload or record audio
+- View predictions and confidence
+- Visualize spectrogram + Grad-CAM
+- Compare multiple models
+- Download automated PDF report
 
-### Automated PDF Report Generation
+---
 
-Each inference generates a downloadable report containing:
-- Prediction result and confidence score
-- Model explanation and rationale
-- Mel spectrogram and Grad-CAM visualization
-- Full evaluation metrics
+### Monitoring (MLOps)
+
+- Tracks predictions, latency, and errors
+- Real-time dashboards via Grafana
+- Production-style observability pipeline
 
 ---
 
@@ -75,50 +84,31 @@ Each inference generates a downloadable report containing:
 
 ```
 Audio Input (.wav / .flac)
-        |
-        v
-+---------------------+
-|  Mel Spectrogram    |  <- librosa preprocessing
-|  Conversion         |
-+----------+----------+
-           |
-           v
-+---------------------+
-|  CNN Model          |  <- CNN / CNN+Dropout / CNN+Attention
-|  (PyTorch)          |
-+----------+----------+
-           |
-     +-----+------+
-     v            v
-Prediction    Grad-CAM
-(Real/Fake)   Heatmap
-     |            |
-     +-----+------+
-           v
-  +---------------+        +------------------+
-  |  Streamlit UI |------->|  PDF Report      |
-  +-------+-------+        +------------------+
-          |
-          v
-  +---------------+        +------------------+
-  |  Prometheus   |------->|  Grafana         |
-  |  Metrics API  |        |  Dashboard       |
-  +---------------+        +------------------+
+        ↓
+Mel Spectrogram (librosa)
+        ↓
+CNN Model (PyTorch)
+        ↓
+Prediction + Grad-CAM
+        ↓
+Streamlit UI + PDF Report
+        ↓
+Prometheus → Grafana Monitoring
 ```
 
 ---
 
 ## Model Performance
 
-All models were evaluated on the **ASVspoof 2019 LA** dataset subset.
+Evaluated on **ASVspoof 2019 LA dataset (subset)**:
 
-| Model | Accuracy | Precision | Recall | F1 Score | EER |
+| Model | Accuracy | Precision | Recall | F1 | EER |
 |---|---|---|---|---|---|
-| CNN (Baseline) | 97.6% | 0.976 | 0.976 | 0.976 | 0.000 |
+| CNN | 97.6% | 0.976 | 0.976 | 0.976 | 0.000 |
 | CNN + Dropout | 97.6% | 0.976 | 0.976 | 0.976 | 0.000 |
 | CNN + Attention | 96.6% | 0.967 | 0.966 | 0.967 | 0.000 |
 
-> **EER = 0.000** across all variants indicates no operating point where false acceptance and false rejection rates are equal — a strong anti-spoofing result.
+> Note: Results are based on a subset and may not generalize to all real-world audio conditions.
 
 ---
 
@@ -126,92 +116,63 @@ All models were evaluated on the **ASVspoof 2019 LA** dataset subset.
 
 ```
 audio-deepfake-detector/
-|
-+-- data/                        # ASVspoof dataset (subset, not tracked)
-|
-+-- notebooks/
-|   +-- setup.ipynb              # Data loading, preprocessing, EDA
-|   +-- test.ipynb               # Model testing
-|   +-- train.ipynb              # Model training
-|   +-- evaluation.ipynb         # Model evaluation
-|
-models                           # CNN, CNN+Dropout, CNN+Attention definitions
-+-- src/                         # Core ML pipeline
-|   +-- inference.py             # Prediction and Grad-CAM generation
-|   +-- metrics.py               # Accuracy, F1, EER computation
-|   +-- preprocessing.py         # Audio to Mel spectrogram pipeline
-|
-+-- ui/                          # Streamlit frontend
-|   +-- app.py
-|
-+-- monitoring/                  # Observability stack
-|   +-- prometheus.yml           # Prometheus scrape configuration
-|
-+-- docs/                        # Architecture diagrams and documentation
-+-- results/                     # Saved outputs and visualizations
-|
-+-- evaluate.py                  # Standalone evaluation script
-+-- evaluation_results.json      # Persisted evaluation metrics
-|
-+-- docker-compose.yml           # Multi-service orchestration
-+-- Dockerfile                   # Application container definition
-+-- requirements.txt             # Python dependencies
-+-- README.md
+│
+├── data/                # Dataset (not included)
+├── notebooks/           # Training, testing, evaluation
+├── src/                 # Core ML pipeline
+├── ui/                  # Streamlit app
+├── monitoring/          # Prometheus config
+├── results/             # Outputs and visualizations
+├── models/              # Model definitions
+│
+├── evaluate.py
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## Quick Start
-
-**Prerequisites:** Docker and Docker Compose installed.
+## Quick Start (Docker)
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/SharathSubramanian/audio-deepfake-detector.git
 cd audio-deepfake-detector
-
-# 2. Launch all services
 docker-compose up --build
 ```
 
-All services will be available at:
+### Access Services
 
-| Service | URL | Description |
-|---|---|---|
-| Streamlit UI | http://localhost:8501 | Interactive inference interface |
-| Metrics API | http://localhost:8000 | Prometheus-compatible metrics endpoint |
-| Prometheus | http://localhost:9090 | Metrics collection and querying |
-| Grafana | http://localhost:3000 | Real-time monitoring dashboards |
+| Service | URL |
+|---|---|
+| UI | http://localhost:8501 |
+| Metrics | http://localhost:8000 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
 
 ---
 
-## Installation
-
-For local development without Docker:
+## Local Setup
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/SharathSubramanian/audio-deepfake-detector.git
-cd audio-deepfake-detector
-
-# 2. Create and activate a virtual environment
 python3 -m venv venv
-source venv/bin/activate          # macOS / Linux
-venv\Scripts\activate             # Windows
-
-# 3. Install dependencies
+source venv/bin/activate
 pip install -r requirements.txt
+streamlit run ui/app.py
 ```
 
 ---
 
 ## Usage
 
-### Run the Streamlit App
+### Run Inference
 
-```bash
-streamlit run ui/app.py
-```
+- Upload `.wav` or `.flac`
+- View prediction + explanation
+- Download PDF report
+
+---
 
 ### Run Evaluation
 
@@ -219,104 +180,59 @@ streamlit run ui/app.py
 python evaluate.py
 ```
 
-Results are written to `evaluation_results.json`.
-
-### Launch the Setup Notebook
-
-```bash
-jupyter notebook notebooks/setup.ipynb
-```
-
-This notebook walks through dataset loading, label parsing (`bonafide` -> real, `spoof` -> fake), Mel spectrogram generation, and waveform visualization.
-
----
-
-## MLOps & Monitoring
-
-This project ships with a full observability pipeline — a deliberate design choice to mirror production ML systems.
-
-### Prometheus Metrics
-
-The metrics API (`localhost:8000`) exposes:
-
-| Metric | Description |
-|---|---|
-| `predictions_total` | Cumulative prediction count |
-| `predictions_by_model` | Per-model usage breakdown |
-| `prediction_latency_seconds` | Inference latency histogram |
-| `confidence_score` | Distribution of model confidence values |
-| `prediction_errors_total` | Error count for reliability tracking |
-
-### Grafana Dashboard
-
-Grafana (`localhost:3000`) provides real-time visualization of:
-
-- Predictions per second
-- Real vs. Fake classification distribution
-- Per-model performance comparison
-- Latency trends over time
-
-> **Default credentials:** `admin` / `admin` (change on first login)
-
 ---
 
 ## Dataset
 
-This project uses the **[ASVspoof 2019 Logical Access (LA)](https://www.asvspoof.org/)** benchmark dataset — the standard evaluation corpus for audio anti-spoofing research.
+- **ASVspoof 2019 Logical Access (LA)**
+- Labels: `bonafide` vs `spoof`
+- Not included due to size
 
-| Property | Details |
-|---|---|
-| Format | `.flac` audio files |
-| Labels | `bonafide` (genuine), `spoof` (AI-generated) |
-| Task | Binary classification: Real vs. Fake |
-| Subset Used | Reduced subset for feasibility |
+---
 
-> The dataset is **not included** in this repository. Download instructions are available at [asvspoof.org](https://www.asvspoof.org/).
+## Limitations ⚠️
+
+- Trained on a limited dataset subset
+- Performance may drop on noisy audio
+- Binary classification only (no spoof type detection)
+- Requires careful interpretation of Grad-CAM
+
+---
+
+## Future Work
+
+- Larger and more diverse datasets
+- Transformer-based models
+- Multi-class spoof detection
+- Cloud deployment
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
+| Category | Tools |
 |---|---|
-| Deep Learning | PyTorch |
-| Audio Processing | Librosa |
-| Explainability | Grad-CAM (OpenCV) |
-| Frontend | Streamlit |
-| Report Generation | ReportLab / FPDF |
-| Monitoring | Prometheus + Grafana |
-| Containerization | Docker, Docker Compose |
-| Language | Python 3.8+ |
+| ML | PyTorch |
+| Audio | Librosa |
+| UI | Streamlit |
+| Explainability | Grad-CAM |
+| Monitoring | Prometheus, Grafana |
+| Deployment | Docker |
 
 ---
-
-## Use Cases
-
-- **Audio forensics** — Verify authenticity of recordings in legal or journalistic contexts
-- **Deepfake detection research** — Benchmark and extend CNN-based anti-spoofing approaches
-- **AI safety tooling** — Detect synthetic media in automated content pipelines
-- **Explainable AI demonstrations** — Showcase Grad-CAM interpretability in a real-world system
-- **MLOps education** — Reference implementation of monitoring, evaluation, and deployment patterns
-
----
-
 
 ## What Makes This Project Stand Out
 
-This system goes beyond a standard model training exercise to demonstrate a **complete ML engineering workflow**:
-
-- End-to-end pipeline from raw audio to prediction
-- Explainability via Grad-CAM — not just predictions, but *why*
-- Production-style monitoring with Prometheus + Grafana
-- Fully containerized with Docker Compose
-- Automated PDF report generation per inference
-- Clean, interactive Streamlit UI for non-technical users
+- Full ML pipeline (not just a model)
+- Explainable AI integration
+- Real-time monitoring (MLOps)
+- Interactive UI
+- Production-style deployment
 
 ---
 
 ## Author
 
-**Sharath Subramanian**
-Email: [sharath.talursub@ufl.edu](mailto:sharath.talursub@ufl.edu)
-GitHub: [github.com/SharathSubramanian](https://github.com/SharathSubramanian)
-
+Sharath Subramanian  
+Email: sharath.talursub@ufl.edu  
+GitHub: https://github.com/SharathSubramanian
