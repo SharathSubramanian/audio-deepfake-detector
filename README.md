@@ -19,7 +19,7 @@ Audio inputs are converted into **Mel spectrograms** and classified using CNN-ba
 
 ---
 
-## What’s New in Deliverable 3 🚀
+## What’s New in Deliverable 3 
 
 This version significantly improves upon the initial prototype:
 
@@ -190,7 +190,7 @@ python evaluate.py
 
 ---
 
-## Limitations ⚠️
+## Limitations 
 
 - Trained on a limited dataset subset
 - Performance may drop on noisy audio
